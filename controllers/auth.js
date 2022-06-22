@@ -1,38 +1,110 @@
 const  { response } = require('express');
-const Usuario = require('../models/usuario');
+const bcrypt = require('bcryptjs');
+const Usuario = require('../models/Usuario');
+const { generarJWT } = require('../helpers/jwt');
 
 
 const crearUsuario = async (req, res = response) => {
-    /* const {name, email, password} = req.body; */
-    
-    const usuario = new Usuario(req.body);
-    await usuario.save()
-    
-    res.status(201).json({
-        ok: true,
-        message: 'registro exitoso',
+    const { email, password} = req.body; 
+    try {
+
+        let usuario = await Usuario.findOne({email});
+
+        if(usuario){
+            return res.status(400).json({
+                ok: false,
+                msg: "El correo ya esta en uso"
+            })
+        }
+
+       usuario = new Usuario(req.body);
+
+       // Encriptar contraseña
+         const salt = bcrypt.genSaltSync(10);
+         usuario.password = bcrypt.hashSync(password, salt);
+
+        // Guardar usuario
+        await usuario.save();
+
+        // Crear token
+        const token = await generarJWT(usuario._id, usuario.name);
         
-    }) 
+        res.status(201).json({
+            ok: true,
+            uid: usuario._id,
+            name: usuario.name,
+            token 
+            
+        }) 
+
+    } catch (error) {
+        res.status(500).json({
+            ok: false,
+            msg:"hablar con el admin"
+        })
+    }
 }
 
-const loginUsuario = (req, res = response) => {
+const loginUsuario = async  (req, res = response) => {
 
     const {email, password} = req.body;
- 
-        
-        res.json.status(201)({
+
+
+    try {
+
+
+        const usuario = await Usuario.findOne({email});
+
+        if(!usuario){
+            return res.status(400).json({
+                ok: false,
+                msg: "El usuario no existe con ese email"
+            })
+        }
+
+        // Comparar contraseña
+        const validPassword = bcrypt.compareSync(password, usuario.password);
+
+        if(!validPassword){
+            return res.status(400).json({
+                ok: false,
+                msg: "El password no es correcto"
+            });
+        }
+
+        // Crear token
+
+        const token = await generarJWT(usuario._id, usuario.name);
+        res.json({
             ok: true,
-            message: 'login exitoso',
-            email,
-            password
-        }) 
+            uid: usuario._id,
+            name: usuario.name,
+            token
+        })
+
+        
+        
+    } catch (error) {
+        res.status(500).json({
+            ok: false,
+            msg:"hablar con el admin"
+        });
+    }
+
+    
+        
 }
 
-const revalidarToken = (req, res = response) => {
+const revalidarToken = async (req, res = response) => {
+
+    const uid = req.uid;
+    const name = req.name;
+
+    const token = await generarJWT(uid, name);
         
         res.json({
             ok: true,
-            message: 'renew'
+            token
         })
 }
 
